@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Photo Batch Copier Live</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&display=swap" rel="stylesheet">
+<style>
+/* Layout idea: one phone-width column. Contact-sheet grid of numbered frames on top,
+   controls pinned to the bottom where the thumb is. */
+:root {
+  --bg: #eef0f3;
+  --surface: #ffffff;
+  --ink: #1b2330;
+  --muted: #5d6878;
+  --line: #d3d8e0;
+  --accent: #c2410c;        /* safelight orange */
+  --accent-ink: #ffffff;
+  --good: #166534;
+  --bad: #b42318;
+  --font-display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", sans-serif;
+  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12161d;
+    --surface: #1c222c;
+    --ink: #e9edf3;
+    --muted: #98a3b3;
+    --line: #313a48;
+    --accent: #f97316;
+    --accent-ink: #1a0f05;
+    --good: #6fd08c;
+    --bad: #ff8a7a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12161d;
+  --surface: #1c222c;
+  --ink: #e9edf3;
+  --muted: #98a3b3;
+  --line: #313a48;
+  --accent: #f97316;
+  --accent-ink: #1a0f05;
+  --good: #6fd08c;
+  --bad: #ff8a7a;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+.finder { position: relative; background: #000; border-radius: 10px; overflow: hidden; width: 100%; margin: 0 auto; }
+.ratios .seg { display: flex; }
+.ratios .seg label { flex: 1; justify-content: center; padding: 9px 4px; font-variant-numeric: tabular-nums; }
+.finder video { display: block; width: 100%; height: 100%; object-fit: cover; background: #000; }
+.finder .flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
+.finder .flash.on { animation: flash .18s ease-out; }
+@keyframes flash { from { opacity: .85; } to { opacity: 0; } }
+.finder .tally { position: absolute; top: 8px; right: 8px; padding: 2px 8px; border-radius: 4px;
+  background: rgba(0,0,0,.62); color: #fff; font-size: 13px; font-variant-numeric: tabular-nums; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.45;
+  -webkit-text-size-adjust: 100%;
+}
+.app {
+  max-width: 520px;
+  margin: 0 auto;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+header {
+  padding: 20px 16px 8px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+h1 {
+  font-family: var(--font-display);
+  font-size: 26px;
+  line-height: 1.1;
+  margin: 0;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+.count {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  font-size: 14px;
+  white-space: nowrap;
+}
+main {
+  flex: 1;
+  padding: 8px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Contact sheet */
+.sheet {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.frame {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--line);
+}
+.frame img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.frame .num {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  min-width: 22px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(0,0,0,.62);
+  color: #fff;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.frame button {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+}
+.frame button span {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(0,0,0,.62);
+  color: #fff;
+  font-size: 16px;
+  line-height: 24px;
+  text-align: center;
+}
+
+.empty {
+  border: 1.5px dashed var(--line);
+  border-radius: 10px;
+  padding: 28px 20px;
+  color: var(--muted);
+}
+.empty strong { color: var(--ink); display: block; margin-bottom: 6px; font-size: 17px; }
+.empty ol { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
+
+/* Options */
+.options {
+  display: grid;
+  gap: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+.opt { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.opt > span, .opt > label.lbl { font-size: 14px; color: var(--muted); }
+select {
+  font: inherit;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  min-height: 40px;
+}
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label {
+  padding: 9px 12px;
+  font-size: 14px;
+  cursor: pointer;
+  background: var(--bg);
+  color: var(--muted);
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+}
+.seg input:checked + label { background: var(--ink); color: var(--bg); }
+.seg input:focus-visible + label { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* Bottom bar */
+.bar {
+  position: sticky;
+  bottom: 0;
+  background: var(--bg);
+  border-top: 1px solid var(--line);
+  padding: 12px 16px 16px;
+  display: grid;
+  gap: 10px;
+}
+.status {
+  min-height: 22px;
+  font-size: 14px;
+  color: var(--muted);
+  margin: 0;
+}
+.status.good { color: var(--good); }
+.status.bad { color: var(--bad); }
+.row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.btn {
+  font: inherit;
+  font-weight: 600;
+  min-height: 52px;
+  border-radius: 12px;
+  border: 1.5px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 12px;
+  text-align: center;
+  -webkit-tap-highlight-color: transparent;
+}
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-size: 17px; }
+.btn.copy { background: var(--ink); border-color: var(--ink); color: var(--bg); font-size: 17px; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn:focus-visible, .frame button:focus-visible, select:focus-visible,
+label.btn:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn.quiet { min-height: 44px; font-weight: 500; font-size: 15px; }
+.btn.danger-armed { border-color: var(--bad); color: var(--bad); }
+.btn input[type="file"] { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
+label.btn { position: relative; }
+.shutter { width: 18px; height: 18px; border-radius: 50%; border: 2.5px solid currentColor; box-shadow: inset 0 0 0 2px var(--accent), inset 0 0 0 9px currentColor; }
+@media (prefers-reduced-motion: no-preference) {
+  .btn:active { transform: scale(.985); }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Photo Batch Copier</h1>
+    <span class="count" id="count">0 photos</span>
+  </header>
+
+  <main>
+    <div class="finder" id="finder" hidden>
+      <video id="video" playsinline muted autoplay></video>
+      <div class="flash" id="flash"></div>
+      <span class="tally" id="tally">0</span>
+    </div>
+
+    <div class="ratios" id="ratios" hidden>
+      <div class="seg" role="radiogroup" aria-label="Viewfinder shape">
+        <input type="radio" name="ratio" id="rFull" value="full" checked><label for="rFull">Full</label>
+        <input type="radio" name="ratio" id="r34" value="3:4"><label for="r34">3:4</label>
+        <input type="radio" name="ratio" id="r11" value="1:1"><label for="r11">1:1</label>
+        <input type="radio" name="ratio" id="r43" value="4:3"><label for="r43">4:3</label>
+        <input type="radio" name="ratio" id="r169" value="16:9"><label for="r169">16:9</label>
+      </div>
+    </div>
+
+    <div class="empty" id="empty">
+      <strong>No photos yet</strong>
+      <ol>
+        <li>Tap <b>Take photo</b> for each shot. Each one is added straight away.</li>
+        <li>Tap <b>Copy all</b>.</li>
+        <li>Paste into Notes, Mail, Messages or a doc.</li>
+      </ol>
+    </div>
+
+    <ul class="sheet" id="sheet" aria-label="Photos in this batch"></ul>
+
+    <div class="options">
+      <div class="opt">
+        <label class="lbl" for="size">Photo size</label>
+        <select id="size">
+          <option value="1024">Small (1024 px)</option>
+          <option value="1600" selected>Medium (1600 px)</option>
+          <option value="2400">Large (2400 px)</option>
+        </select>
+      </div>
+      <div class="opt">
+        <span id="modeLbl">Copy as</span>
+        <div class="seg" role="radiogroup" aria-labelledby="modeLbl">
+          <input type="radio" name="mode" id="modeSep" value="separate" checked>
+          <label for="modeSep">Separate photos</label>
+          <input type="radio" name="mode" id="modeOne" value="stitched">
+          <label for="modeOne">One tall image</label>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <div class="bar">
+    <p class="status" id="status" role="status" aria-live="polite"></p>
+    <div class="row">
+      <button class="btn primary" id="shoot" type="button" hidden>
+        <span class="shutter" aria-hidden="true"></span> Take photo
+      </button>
+      <label class="btn primary" id="camLabel" for="cam">
+        <span class="shutter" aria-hidden="true"></span> Take photo
+        <input type="file" id="cam" accept="image/*" capture="environment">
+      </label>
+      <button class="btn copy" id="copy" type="button" disabled>Copy all</button>
+    </div>
+    <div class="row">
+      <label class="btn quiet" for="lib">
+        Add from library
+        <input type="file" id="lib" accept="image/*" multiple>
+      </label>
+      <button class="btn quiet" id="clear" type="button" disabled>Clear all</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var photos = [];            // { id, blob (PNG), url, w, h }
+  var nextId = 1;
+  var busy = 0;
+
+  var $ = function (id) { return document.getElementById(id); };
+  var sheet = $("sheet"), empty = $("empty"), count = $("count"), statusEl = $("status");
+  var copyBtn = $("copy"), clearBtn = $("clear"), sizeSel = $("size");
+
+  try {
+    var saved = localStorage.getItem("pbc-size");
+    if (saved && sizeSel.querySelector('option[value="' + saved + '"]')) sizeSel.value = saved;
+  } catch (e) {}
+  sizeSel.addEventListener("change", function () {
+    try { localStorage.setItem("pbc-size", sizeSel.value); } catch (e) {}
+    if (photos.length) say("New size applies to the next photos you add.");
+  });
+
+  function say(msg, kind) {
+    statusEl.textContent = msg || "";
+    statusEl.className = "status" + (kind ? " " + kind : "");
+  }
+  function plural(n) { return n + (n === 1 ? " photo" : " photos"); }
+
+  function render() {
+    sheet.textContent = "";
+    photos.forEach(function (p, i) {
+      var li = document.createElement("li");
+      li.className = "frame";
+      var img = document.createElement("img");
+      img.src = p.url;
+      img.alt = "Photo " + (i + 1);
+      var num = document.createElement("span");
+      num.className = "num";
+      num.textContent = i + 1;
+      var rm = document.createElement("button");
+      rm.type = "button";
+      rm.setAttribute("aria-label", "Remove photo " + (i + 1));
+      var x = document.createElement("span");
+      x.textContent = "×";
+      x.setAttribute("aria-hidden", "true");
+      rm.appendChild(x);
+      rm.addEventListener("click", function () { remove(p.id); });
+      li.appendChild(img); li.appendChild(num); li.appendChild(rm);
+      sheet.appendChild(li);
+    });
+    empty.hidden = photos.length > 0;
+    count.textContent = plural(photos.length);
+    $("tally").textContent = photos.length;
+    copyBtn.disabled = photos.length === 0 || busy > 0;
+    copyBtn.textContent = photos.length ? "Copy " + plural(photos.length) : "Copy all";
+    clearBtn.disabled = photos.length === 0;
+    disarmClear();
+  }
+
+  function remove(id) {
+    photos = photos.filter(function (p) {
+      if (p.id === id) { URL.revokeObjectURL(p.url); return false; }
+      return true;
+    });
+    say("");
+    render();
+  }
+
+  // Decode a camera file, shrink it, and keep it as PNG (the format every clipboard accepts).
+  function toPng(file, maxEdge) {
+    return new Promise(function (resolve, reject) {
+      var src = URL.createObjectURL(file);
+      var img = new Image();
+      img.onload = function () {
+        var w = img.naturalWidth, h = img.naturalHeight;
+        var s = Math.min(1, maxEdge / Math.max(w, h));
+        var cw = Math.max(1, Math.round(w * s)), ch = Math.max(1, Math.round(h * s));
+        var c = document.createElement("canvas");
+        c.width = cw; c.height = ch;
+        c.getContext("2d").drawImage(img, 0, 0, cw, ch);
+        URL.revokeObjectURL(src);
+        c.toBlob(function (blob) {
+          c.width = c.height = 0;
+          if (blob) resolve({ blob: blob, w: cw, h: ch });
+          else reject(new Error("encode"));
+        }, "image/png");
+      };
+      img.onerror = function () { URL.revokeObjectURL(src); reject(new Error("decode")); };
+      img.src = src;
+    });
+  }
+
+  function addFiles(fileList) {
+    var files = Array.prototype.slice.call(fileList || []);
+    if (!files.length) return;
+    var maxEdge = parseInt(sizeSel.value, 10) || 1600;
+    busy++;
+    copyBtn.disabled = true;
+    say("Adding " + plural(files.length) + "…");
+    var failed = 0;
+    // One at a time keeps memory low on a phone and preserves order.
+    files.reduce(function (chain, f) {
+      return chain.then(function () {
+        return toPng(f, maxEdge).then(function (r) {
+          photos.push({ id: nextId++, blob: r.blob, url: URL.createObjectURL(r.blob), w: r.w, h: r.h });
+          render();
+        }, function () { failed++; });
+      });
+    }, Promise.resolve()).then(function () {
+      busy--;
+      render();
+      if (failed) say("Could not read " + plural(failed) + ". Try taking it again.", "bad");
+      else say(plural(photos.length) + " ready. Take another or copy.");
+    });
+  }
+
+  ["cam", "lib"].forEach(function (id) {
+    var input = $(id);
+    input.addEventListener("change", function () {
+      addFiles(input.files);
+      input.value = "";      // so the same file can be picked again
+    });
+  });
+
+  // ---- Live camera: one tap per photo, no confirmation step ----
+  var video = $("video"), finder = $("finder"), shoot = $("shoot"), camLabel = $("camLabel"), flash = $("flash");
+  var stream = null;
+
+  function cameraLive() {
+    return stream && stream.getVideoTracks().some(function (t) { return t.readyState === "live"; });
+  }
+  function showLive(on) {
+    finder.hidden = !on;
+    $("ratios").hidden = !on;
+    shoot.hidden = !on;
+    camLabel.hidden = on;
+  }
+  // Viewfinder shape: width:height. The photo is cropped to exactly what the viewfinder shows.
+  function currentRatio(w, h) {
+    var v = document.querySelector('input[name="ratio"]:checked').value;
+    if (v === "full") return w / h;
+    var p = v.split(":");
+    return p[0] / p[1];
+  }
+  function applyRatio() {
+    var w = video.videoWidth, h = video.videoHeight;
+    if (!w || !h) return;
+    var r = currentRatio(w, h);
+    finder.style.aspectRatio = String(r);
+    finder.style.width = "min(100%, calc(52vh * " + r + "))";
+  }
+  try {
+    var savedRatio = localStorage.getItem("pbc-ratio");
+    var radios = document.querySelectorAll('input[name="ratio"]');
+    for (var i = 0; i < radios.length; i++) if (radios[i].value === savedRatio) radios[i].checked = true;
+  } catch (e) {}
+  document.querySelectorAll('input[name="ratio"]').forEach(function (el) {
+    el.addEventListener("change", function () {
+      try { localStorage.setItem("pbc-ratio", el.value); } catch (e) {}
+      applyRatio();
+    });
+  });
+  video.addEventListener("loadedmetadata", applyRatio);
+  video.addEventListener("resize", applyRatio);
+
+  function startCamera() {
+    if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) { showLive(false); return; }
+    navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: { facingMode: { ideal: "environment" }, width: { ideal: 3840 }, height: { ideal: 2160 } }
+    }).then(function (s) {
+      stream = s;
+      video.srcObject = s;
+      var p = video.play();
+      if (p && p.catch) p.catch(function () {});
+      showLive(true);
+    }).catch(function () {
+      showLive(false);
+      say("Live camera is not available here, so each photo opens the iPhone camera instead. Allow camera access in Safari to shoot without stopping.");
+    });
+  }
+  shoot.addEventListener("click", function () {
+    var w = video.videoWidth, h = video.videoHeight;
+    if (!cameraLive() || !w || !h) { say("Camera is starting. Try again in a moment."); startCamera(); return; }
+    var maxEdge = parseInt(sizeSel.value, 10) || 1600;
+    var r = currentRatio(w, h);
+    var sw = w, sh = h;
+    if (w / h > r) sw = Math.round(h * r); else sh = Math.round(w / r);
+    var sx = Math.round((w - sw) / 2), sy = Math.round((h - sh) / 2);
+    var s = Math.min(1, maxEdge / Math.max(sw, sh));
+    var cw = Math.max(1, Math.round(sw * s)), ch = Math.max(1, Math.round(sh * s));
+    var c = document.createElement("canvas");
+    c.width = cw; c.height = ch;
+    c.getContext("2d").drawImage(video, sx, sy, sw, sh, 0, 0, cw, ch);   // grab the frame now; encode in the background
+    var id = nextId++;
+    flash.classList.remove("on"); void flash.offsetWidth; flash.classList.add("on");
+    busy++;
+    copyBtn.disabled = true;
+    c.toBlob(function (blob) {
+      c.width = c.height = 0;
+      busy--;
+      if (blob) {
+        photos.push({ id: id, blob: blob, url: URL.createObjectURL(blob), w: cw, h: ch });
+        photos.sort(function (a, b) { return a.id - b.id; });
+        say("");
+      } else {
+        say("That photo could not be saved. Take it again.", "bad");
+      }
+      render();
+    }, "image/png");
+  });
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "visible" && !cameraLive()) startCamera();
+  });
+  startCamera();
+
+  // ---- Clipboard ----
+  function stitchedBlob() {
+    // Stack photos top to bottom at a shared width, kept under iOS's canvas size limit.
+    var ratioSum = photos.reduce(function (a, p) { return a + p.h / p.w; }, 0);
+    var width = Math.min(1200, Math.floor(Math.sqrt(15000000 / ratioSum)));
+    var heights = photos.map(function (p) { return Math.round(width * p.h / p.w); });
+    var total = heights.reduce(function (a, b) { return a + b; }, 0);
+    var c = document.createElement("canvas");
+    c.width = width; c.height = total;
+    var ctx = c.getContext("2d");
+    var y = 0;
+    return photos.reduce(function (chain, p, i) {
+      return chain.then(function () {
+        return new Promise(function (res, rej) {
+          var im = new Image();
+          im.onload = function () { ctx.drawImage(im, 0, y, width, heights[i]); y += heights[i]; res(); };
+          im.onerror = rej;
+          im.src = p.url;
+        });
+      });
+    }, Promise.resolve()).then(function () {
+      return new Promise(function (res, rej) {
+        c.toBlob(function (b) { c.width = c.height = 0; b ? res(b) : rej(new Error("encode")); }, "image/png");
+      });
+    });
+  }
+
+  function htmlBlob() {
+    // Rich-text version: every photo as an inline image. Pastes into Notes, Mail, Docs, Word.
+    return Promise.all(photos.map(function (p) {
+      return new Promise(function (res, rej) {
+        var fr = new FileReader();
+        fr.onload = function () { res(fr.result); };
+        fr.onerror = rej;
+        fr.readAsDataURL(p.blob);
+      });
+    })).then(function (uris) {
+      var html = uris.map(function (u, i) {
+        return '<p><img src="' + u + '" alt="Photo ' + (i + 1) + '" width="' + photos[i].w + '" height="' + photos[i].h + '"></p>';
+      }).join("");
+      return new Blob([html], { type: "text/html" });
+    });
+  }
+
+  function canCopyImages() {
+    return !!(navigator.clipboard && navigator.clipboard.write && window.ClipboardItem);
+  }
+
+  function copyAll() {
+    if (!photos.length) return;
+    if (!canCopyImages()) {
+      say("This browser cannot copy images. Open this page in Safari and try again.", "bad");
+      return;
+    }
+    var n = photos.length;
+    var mode = document.querySelector('input[name="mode"]:checked').value;
+    copyBtn.disabled = true;
+    say("Copying…");
+
+    var attempt;
+    if (mode === "stitched") {
+      attempt = navigator.clipboard.write([new ClipboardItem({ "image/png": stitchedBlob() })])
+        .then(function () { say("Copied " + plural(n) + " as one tall image. Paste it anywhere.", "good"); });
+    } else {
+      // Must start inside the tap, so the blobs are already prepared.
+      var items = photos.map(function (p) { return new ClipboardItem({ "image/png": p.blob }); });
+      attempt = navigator.clipboard.write(items)
+        .then(function () { say("Copied " + plural(n) + ". Paste them anywhere.", "good"); })
+        .catch(function (err) {
+          if (n === 1) throw err;
+          // Some browsers accept only one clipboard item: send all photos as one rich-text item.
+          return navigator.clipboard.write([new ClipboardItem({ "text/html": htmlBlob() })])
+            .then(function () {
+              say("Copied " + plural(n) + " as rich text. Paste into Notes, Mail or a doc. For chat apps, switch to One tall image.", "good");
+            });
+        });
+    }
+    attempt.catch(function () {
+      say("Copying was blocked. Tap Copy again. If it still fails, switch to One tall image or open this page in Safari.", "bad");
+    }).then(function () { copyBtn.disabled = photos.length === 0 || busy > 0; });
+  }
+  copyBtn.addEventListener("click", copyAll);
+
+  // ---- Clear (two taps, no browser dialog) ----
+  var armed = false, armTimer = null;
+  function disarmClear() {
+    armed = false;
+    clearTimeout(armTimer);
+    clearBtn.textContent = "Clear all";
+    clearBtn.classList.remove("danger-armed");
+  }
+  clearBtn.addEventListener("click", function () {
+    if (!armed) {
+      armed = true;
+      clearBtn.textContent = "Tap again to clear";
+      clearBtn.classList.add("danger-armed");
+      armTimer = setTimeout(disarmClear, 3000);
+      return;
+    }
+    photos.forEach(function (p) { URL.revokeObjectURL(p.url); });
+    photos = [];
+    say("Cleared.");
+    render();
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>

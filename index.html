@@ -53,8 +53,10 @@
 
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
-.finder { position: relative; background: #000; border-radius: 10px; overflow: hidden; }
-.finder video { display: block; width: 100%; max-height: 52vh; object-fit: contain; background: #000; }
+.finder { position: relative; background: #000; border-radius: 10px; overflow: hidden; width: 100%; margin: 0 auto; }
+.ratios .seg { display: flex; }
+.ratios .seg label { flex: 1; justify-content: center; padding: 9px 4px; font-variant-numeric: tabular-nums; }
+.finder video { display: block; width: 100%; height: 100%; object-fit: cover; background: #000; }
 .finder .flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
 .finder .flash.on { animation: flash .18s ease-out; }
 @keyframes flash { from { opacity: .85; } to { opacity: 0; } }
@@ -274,6 +276,16 @@ label.btn { position: relative; }
       <span class="tally" id="tally">0</span>
     </div>
 
+    <div class="ratios" id="ratios" hidden>
+      <div class="seg" role="radiogroup" aria-label="Viewfinder shape">
+        <input type="radio" name="ratio" id="rFull" value="full" checked><label for="rFull">Full</label>
+        <input type="radio" name="ratio" id="r34" value="3:4"><label for="r34">3:4</label>
+        <input type="radio" name="ratio" id="r11" value="1:1"><label for="r11">1:1</label>
+        <input type="radio" name="ratio" id="r43" value="4:3"><label for="r43">4:3</label>
+        <input type="radio" name="ratio" id="r169" value="16:9"><label for="r169">16:9</label>
+      </div>
+    </div>
+
     <div class="empty" id="empty">
       <strong>No photos yet</strong>
       <ol>
@@ -459,9 +471,38 @@ label.btn { position: relative; }
   }
   function showLive(on) {
     finder.hidden = !on;
+    $("ratios").hidden = !on;
     shoot.hidden = !on;
     camLabel.hidden = on;
   }
+  // Viewfinder shape: width:height. The photo is cropped to exactly what the viewfinder shows.
+  function currentRatio(w, h) {
+    var v = document.querySelector('input[name="ratio"]:checked').value;
+    if (v === "full") return w / h;
+    var p = v.split(":");
+    return p[0] / p[1];
+  }
+  function applyRatio() {
+    var w = video.videoWidth, h = video.videoHeight;
+    if (!w || !h) return;
+    var r = currentRatio(w, h);
+    finder.style.aspectRatio = String(r);
+    finder.style.width = "min(100%, calc(52vh * " + r + "))";
+  }
+  try {
+    var savedRatio = localStorage.getItem("pbc-ratio");
+    var radios = document.querySelectorAll('input[name="ratio"]');
+    for (var i = 0; i < radios.length; i++) if (radios[i].value === savedRatio) radios[i].checked = true;
+  } catch (e) {}
+  document.querySelectorAll('input[name="ratio"]').forEach(function (el) {
+    el.addEventListener("change", function () {
+      try { localStorage.setItem("pbc-ratio", el.value); } catch (e) {}
+      applyRatio();
+    });
+  });
+  video.addEventListener("loadedmetadata", applyRatio);
+  video.addEventListener("resize", applyRatio);
+
   function startCamera() {
     if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) { showLive(false); return; }
     navigator.mediaDevices.getUserMedia({
@@ -482,11 +523,15 @@ label.btn { position: relative; }
     var w = video.videoWidth, h = video.videoHeight;
     if (!cameraLive() || !w || !h) { say("Camera is starting. Try again in a moment."); startCamera(); return; }
     var maxEdge = parseInt(sizeSel.value, 10) || 1600;
-    var s = Math.min(1, maxEdge / Math.max(w, h));
-    var cw = Math.round(w * s), ch = Math.round(h * s);
+    var r = currentRatio(w, h);
+    var sw = w, sh = h;
+    if (w / h > r) sw = Math.round(h * r); else sh = Math.round(w / r);
+    var sx = Math.round((w - sw) / 2), sy = Math.round((h - sh) / 2);
+    var s = Math.min(1, maxEdge / Math.max(sw, sh));
+    var cw = Math.max(1, Math.round(sw * s)), ch = Math.max(1, Math.round(sh * s));
     var c = document.createElement("canvas");
     c.width = cw; c.height = ch;
-    c.getContext("2d").drawImage(video, 0, 0, cw, ch);   // grab the frame now; encode in the background
+    c.getContext("2d").drawImage(video, sx, sy, sw, sh, 0, 0, cw, ch);   // grab the frame now; encode in the background
     var id = nextId++;
     flash.classList.remove("on"); void flash.offsetWidth; flash.classList.add("on");
     busy++;
